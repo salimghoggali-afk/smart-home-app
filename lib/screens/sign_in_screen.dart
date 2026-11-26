@@ -1,12 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../core/admin_lock.dart';
 import '../core/auth_service.dart';
 import '../core/firebase_link_config.dart';
 import '../core/link_service.dart';
 import '../ui/app_logo.dart';
-import 'link_start_screen.dart';
-import 'unlock_sheet.dart';
 
 /// Email and password sign-in. When the home has no owner yet, it offers to
 /// create the owner account instead.
@@ -105,18 +102,6 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
-  Future<void> _unlink() async {
-    // Unlinking needs the installer's configuration code.
-    if (!await askConfigurationCode(context, AdminLock())) return;
-    await widget.linkService.reset();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-          builder: (_) => LinkStartScreen(linkService: widget.linkService)),
-      (_) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -134,14 +119,6 @@ class _SignInScreenState extends State<SignInScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        actions: [
-          PopupMenuButton<int>(
-            onSelected: (_) => _unlink(),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 0, child: Text('Unlink the home')),
-            ],
-          ),
-        ],
       ),
       body: SafeArea(
         child: _hasOwner == null

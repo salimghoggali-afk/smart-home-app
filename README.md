@@ -1,17 +1,44 @@
-# smarthome
+# My Home (smart home app)
 
-A new Flutter project.
+Flutter 3 Android app that links at run time to a Firebase project (by QR code),
+signs people in with email and password, and lets an installer configure the home
+in the Realtime Database.
 
-## Getting Started
+## Menu (v1.3)
 
-This project is a starting point for a Flutter application.
+- **Home**
+- **Operator** (needs today's operator code): Configuration, Unlink the home
+- **Settings** (needs the user's own password): Profile, Display
+- **Sign out**
 
-A few resources to get you started if this is your first Flutter project:
+## Daily operator code (v2)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- One 8-digit code per day, the same in every home, valid only that day.
+- Code = `HMAC-SHA256(master, "myhome-op-v2|<YYYY-MM-DD>")`, cut to 8 digits
+  (RFC 4226 dynamic truncation). The day is the date in Algeria (UTC+1), from
+  Firebase server time.
+- The master key is **not** in this repository. The release build gets it as two
+  random halves: `--dart-define-from-file=operator-key.json` (keys `OP_A`,
+  `OP_B`, XOR gives the master). The file is kept with the signing key.
+- A build without the file still runs, but the Operator menu says the app has
+  no operator key.
+- Salim and Karim read the code on the private "Operator Daily Code" page.
+- Changing the key: make a new `operator-key.json`, release an update, and
+  give the new master key to the code page. Old app versions keep the old key.
+- Code: `lib/core/admin_lock.dart`, tests: `test/admin_lock_test.dart`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Database rules
+
+Paste `database.rules.json` into Firebase console > Realtime Database > Rules.
+
+## Build
+
+```
+flutter pub get
+flutter test
+flutter build apk --release --obfuscate --split-debug-info=build/debug-info \
+  --dart-define-from-file=/path/to/operator-key.json
+```
+
+Release signing needs `android/key.properties` and the keystore, which are kept
+outside the repository.

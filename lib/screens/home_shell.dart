@@ -13,10 +13,13 @@ import 'link_start_screen.dart';
 import 'settings_screen.dart';
 import 'unlock_sheet.dart';
 
-enum _Page { home, configuration, settings }
+enum _Page { home, configuration, profile, display }
 
-/// The signed-in app. Side menu: Home; Configuration (installer code) with
-/// Configuration and Unlink inside; Settings (user's own password); Sign out.
+/// The signed-in app. Side menu:
+///   Home
+///   Operator (daily operator code): Configuration, Unlink the home
+///   Settings (user's own password): Profile, Display
+///   Sign out
 class HomeShell extends StatefulWidget {
   const HomeShell({
     super.key,
@@ -41,28 +44,24 @@ class _HomeShellState extends State<HomeShell> {
   late Future<AccessLevel> _access = widget.auth.accessLevel();
   _Page _page = _Page.home;
 
-  Future<void> _goHome() async {
+  Future<bool> _operator() =>
+      askOperatorCode(context, _lock);
+  Future<bool> _settings() =>
+      askOwnPassword(context, _lock, widget.user.email ?? '');
+
+  Future<void> _open(_Page p) async {
     Navigator.of(context).pop(); // close the drawer
-    setState(() => _page = _Page.home);
-  }
-
-  Future<void> _goConfiguration() async {
-    Navigator.of(context).pop();
-    if (await askConfigurationCode(context, _lock) && mounted) {
-      setState(() => _page = _Page.configuration);
-    }
-  }
-
-  Future<void> _goSettings() async {
-    Navigator.of(context).pop();
-    if (await askOwnPassword(context, _lock, widget.user.email ?? '') && mounted) {
-      setState(() => _page = _Page.settings);
-    }
+    final ok = switch (p) {
+      _Page.home => true,
+      _Page.configuration => await _operator(),
+      _Page.profile || _Page.display => await _settings(),
+    };
+    if (ok && mounted) setState(() => _page = p);
   }
 
   Future<void> _unlinkProtected() async {
     Navigator.of(context).pop();
-    if (await askConfigurationCode(context, _lock) && mounted) await _unlink();
+    if (await _operator() && mounted) await _unlink();
   }
 
   Future<void> _signOut() async {
@@ -76,10 +75,10 @@ class _HomeShellState extends State<HomeShell> {
       context: context,
       builder: (c) => AlertDialog(
         icon: const Icon(Icons.link_off_rounded),
-        title: const Text('Unlink this project?'),
+        title: const Text('Unlink this home?'),
         content: const Text(
             'You will be signed out and the app will forget this Firebase project. '
-            'Your home data stays in Firebase.'),
+            'The home data stays in Firebase.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(c, false),
@@ -122,12 +121,16 @@ class _HomeShellState extends State<HomeShell> {
         final isOwner = level == AccessLevel.owner;
         // Protected pages lock again after a few minutes.
         var page = _page;
-        if (page == _Page.configuration && !_lock.adminUnlocked) page = _Page.home;
-        if (page == _Page.settings && !_lock.settingsUnlocked) page = _Page.home;
+        if (page == _Page.configuration && !_lock.operatorUnlocked) page = _Page.home;
+        if ((page == _Page.profile || page == _Page.display) &&
+            !_lock.settingsUnlocked) {
+          page = _Page.home;
+        }
         final title = switch (page) {
           _Page.home => 'My Home',
           _Page.configuration => 'Configuration',
-          _Page.settings => 'Settings',
+          _Page.profile => 'Profile',
+          _Page.display => 'Display',
         };
         return Scaffold(
           appBar: AppBar(title: Text(title)),
@@ -137,7 +140,7 @@ class _HomeShellState extends State<HomeShell> {
                 repo: _repo,
                 isOwner: isOwner,
                 onConfigure: () async {
-                  if (await askConfigurationCode(context, _lock) && mounted) {
+                  if (await _operator() && mounted) {
                     setState(() => _page = _Page.configuration);
                   }
                 },
@@ -145,12 +148,13 @@ class _HomeShellState extends State<HomeShell> {
             _Page.configuration => isOwner
                 ? ConfigurationScreen(repo: _repo, uid: widget.user.uid)
                 : const _OwnerOnly(),
-            _Page.settings => SettingsScreen(
+            _Page.profile => ProfileScreen(
                 user: widget.user,
                 lock: _lock,
                 config: widget.config,
                 isOwner: isOwner,
               ),
+            _Page.display => const DisplayScreen(),
           },
         );
       },
@@ -166,7 +170,6 @@ class _HomeShellState extends State<HomeShell> {
       required String label,
       required VoidCallback onTap,
       bool selected = false,
-      Widget? trailing,
       double indent = 0,
     }) =>
         Padding(
@@ -178,15 +181,40 @@ class _HomeShellState extends State<HomeShell> {
             selectedColor: scheme.onSecondaryContainer,
             leading: Icon(icon),
             title: Text(label),
-            trailing: trailing,
             onTap: onTap,
           ),
         );
-    final lockIcon = Icon(
-      _lock.adminUnlocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-      size: 18,
-      color: scheme.onSurfaceVariant,
-    );
+    Widget lockIcon(bool open) => Icon(
+          open ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
+          size: 18,
+          color: scheme.onSurfaceVariant,
+        );
+    Widget group({
+      required IconData icon,
+      required String label,
+      required bool open,
+      required bool expanded,
+      required List<Widget> children,
+    }) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              shape: shape,
+              collapsedShape: shape,
+              initiallyExpanded: expanded,
+              leading: Icon(icon),
+              title: Text(label),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                lockIcon(open),
+                const SizedBox(width: 4),
+                const Icon(Icons.expand_more_rounded),
+              ]),
+              children: children,
+            ),
+          ),
+        );
 
     return Drawer(
       child: SafeArea(
@@ -229,51 +257,50 @@ class _HomeShellState extends State<HomeShell> {
               icon: page == _Page.home ? Icons.home_rounded : Icons.home_outlined,
               label: 'Home',
               selected: page == _Page.home,
-              onTap: _goHome,
+              onTap: () => _open(_Page.home),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  shape: shape,
-                  collapsedShape: shape,
-                  initiallyExpanded: page == _Page.configuration,
-                  leading: const Icon(Icons.admin_panel_settings_outlined),
-                  title: const Text('Configuration'),
-                  trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                    lockIcon,
-                    const SizedBox(width: 4),
-                    const Icon(Icons.expand_more_rounded),
-                  ]),
-                  children: [
-                    item(
-                      icon: Icons.tune_rounded,
-                      label: 'Configuration',
-                      selected: page == _Page.configuration,
-                      indent: 16,
-                      onTap: _goConfiguration,
-                    ),
-                    item(
-                      icon: Icons.link_off_rounded,
-                      label: 'Unlink the home',
-                      indent: 16,
-                      onTap: _unlinkProtected,
-                    ),
-                  ],
+            group(
+              icon: Icons.engineering_outlined,
+              label: 'Operator',
+              open: _lock.operatorUnlocked,
+              expanded: page == _Page.configuration,
+              children: [
+                item(
+                  icon: Icons.tune_rounded,
+                  label: 'Configuration',
+                  selected: page == _Page.configuration,
+                  indent: 16,
+                  onTap: () => _open(_Page.configuration),
                 ),
-              ),
+                item(
+                  icon: Icons.link_off_rounded,
+                  label: 'Unlink the home',
+                  indent: 16,
+                  onTap: _unlinkProtected,
+                ),
+              ],
             ),
-            item(
-              icon: page == _Page.settings ? Icons.settings_rounded : Icons.settings_outlined,
+            group(
+              icon: Icons.settings_outlined,
               label: 'Settings',
-              selected: page == _Page.settings,
-              trailing: Icon(
-                _lock.settingsUnlocked ? Icons.lock_open_rounded : Icons.lock_outline_rounded,
-                size: 18,
-                color: scheme.onSurfaceVariant,
-              ),
-              onTap: _goSettings,
+              open: _lock.settingsUnlocked,
+              expanded: page == _Page.profile || page == _Page.display,
+              children: [
+                item(
+                  icon: Icons.person_outline_rounded,
+                  label: 'Profile',
+                  selected: page == _Page.profile,
+                  indent: 16,
+                  onTap: () => _open(_Page.profile),
+                ),
+                item(
+                  icon: Icons.palette_outlined,
+                  label: 'Display',
+                  selected: page == _Page.display,
+                  indent: 16,
+                  onTap: () => _open(_Page.display),
+                ),
+              ],
             ),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
