@@ -1,7 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:my_home/sahar/compTickTab.dart';
 import 'package:provider/provider.dart';
 
 import 'models/user.dart';
@@ -10,8 +9,8 @@ import 'services/auth.dart';
 import 'shared/constants.dart';
 
 Future<void> main() async {
-  //WidgetsFlutterBinding.ensureInitialized();
-  //await Firebase.initializeApp();
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(MyApp());
 }
 
@@ -36,7 +35,7 @@ class MyApp extends StatelessWidget {
             buttonTheme: ButtonThemeData(
               buttonColor: Colors.teal,
             )),
-        home: CompTickTab(), //Wrapper(),
+        home: Wrapper(),
       ),
     );
   }
