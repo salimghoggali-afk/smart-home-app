@@ -3,7 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../core/firebase_link_config.dart';
 import '../core/link_service.dart';
 import '../ui/app_logo.dart';
-import 'connected_screen.dart';
+import 'auth_gate.dart';
 import 'manual_entry_screen.dart';
 import 'qr_scan_screen.dart';
 
@@ -57,7 +57,7 @@ class _LinkStartScreenState extends State<LinkStartScreen> {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) =>
-              ConnectedScreen(linkService: widget.linkService, config: config),
+              AuthGate(linkService: widget.linkService, config: config),
         ),
         (_) => false,
       );
@@ -69,7 +69,10 @@ class _LinkStartScreenState extends State<LinkStartScreen> {
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (_) => const _HelpSheet(),
+      builder: (_) => _HelpSheet(onManual: () {
+        Navigator.of(context).pop();
+        _manual();
+      }),
     );
   }
 
@@ -111,16 +114,11 @@ class _LinkStartScreenState extends State<LinkStartScreen> {
                       icon: const Icon(Icons.qr_code_scanner_rounded),
                       label: const Text('Scan QR code'),
                     ),
-                    const SizedBox(height: 12),
-                    OutlinedButton.icon(
-                      onPressed: _manual,
-                      icon: const Icon(Icons.edit_note_rounded),
-                      label: const Text('Enter details by hand'),
-                    ),
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: _help,
-                      child: const Text('Where do I find these details?'),
+                      child: Text("Can't scan?",
+                          style: TextStyle(color: scheme.onSurfaceVariant)),
                     ),
                     const SizedBox(height: 16),
                   ],
@@ -181,11 +179,11 @@ class _StepsCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
         child: Column(children: [
           step(Icons.qr_code_2_rounded, 'Scan the link code',
-              'Your installer gives you a QR code for your home.'),
+              'The QR code holds the details of your home\'s Firebase project.'),
           step(Icons.verified_user_outlined, 'Check and confirm',
               'The app checks the project before it saves it.'),
-          step(Icons.lock_outline_rounded, 'Saved on this phone',
-              'Next time the app opens straight to your home.'),
+          step(Icons.person_outline_rounded, 'Sign in',
+              'The first account created becomes the owner of the home.'),
         ]),
       ),
     );
@@ -337,7 +335,8 @@ class _ReviewSheetState extends State<_ReviewSheet> {
 }
 
 class _HelpSheet extends StatelessWidget {
-  const _HelpSheet();
+  const _HelpSheet({required this.onManual});
+  final VoidCallback onManual;
 
   @override
   Widget build(BuildContext context) {
@@ -352,14 +351,17 @@ class _HelpSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Where to find the details',
+            Text("Can't scan the code?",
                 style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 16),
-            p('1. Open console.firebase.google.com and choose your project.'),
-            p('2. Go to Project settings, then "Your apps", and add an Android app if there is none.'),
-            p('3. Download google-services.json, or copy the values shown there.'),
-            p('4. In the app, choose "Enter details by hand" and paste the whole file, or fill in each field.'),
-            p('A QR code with the same details links the app in one step.'),
+            p('Ask for a new link QR code, or make it yourself with the QR maker page from google-services.json.'),
+            p('Check that the camera is allowed for My Home in the phone settings, and that the code is well lit.'),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: onManual,
+              icon: const Icon(Icons.edit_note_rounded),
+              label: const Text('Enter the details by hand'),
+            ),
           ],
         ),
       ),

@@ -4,7 +4,7 @@ import '../core/firebase_link_config.dart';
 import '../core/link_service.dart';
 import '../ui/app_logo.dart';
 import '../ui/theme.dart';
-import 'connected_screen.dart';
+import 'auth_gate.dart';
 import 'link_start_screen.dart';
 
 /// First screen. Plays a short animation while it loads the saved Firebase
@@ -53,7 +53,7 @@ class _SplashScreenState extends State<SplashScreen>
     await minTime;
     if (!mounted) return;
     final next = config != null
-        ? ConnectedScreen(linkService: widget.linkService, config: config)
+        ? AuthGate(linkService: widget.linkService, config: config)
         : LinkStartScreen(
             linkService: widget.linkService, initialError: startError);
     Navigator.of(context).pushReplacement(PageRouteBuilder(
