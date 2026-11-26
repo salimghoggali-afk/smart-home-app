@@ -22,7 +22,7 @@ class _SplashScreenState extends State<SplashScreen>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 1600),
+    duration: const Duration(milliseconds: 2400),
   )..forward();
 
   late final Animation<double> _scale = CurvedAnimation(
@@ -30,7 +30,9 @@ class _SplashScreenState extends State<SplashScreen>
   late final Animation<double> _glow = CurvedAnimation(
       parent: _c, curve: const Interval(0.35, 0.8, curve: Curves.easeInOut));
   late final Animation<double> _text = CurvedAnimation(
-      parent: _c, curve: const Interval(0.5, 1, curve: Curves.easeOut));
+      parent: _c, curve: const Interval(0.45, 0.8, curve: Curves.easeOut));
+  late final Animation<double> _credit = CurvedAnimation(
+      parent: _c, curve: const Interval(0.7, 1, curve: Curves.easeOut));
 
   @override
   void initState() {
@@ -39,7 +41,7 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _boot() async {
-    final minTime = Future<void>.delayed(const Duration(milliseconds: 1900));
+    final minTime = Future<void>.delayed(const Duration(milliseconds: 3600));
     FirebaseLinkConfig? config;
     String? startError;
     try {
@@ -78,55 +80,82 @@ class _SplashScreenState extends State<SplashScreen>
       body: Container(
         decoration: const BoxDecoration(
           gradient: RadialGradient(
-            center: Alignment(0, -0.2),
             radius: 1.1,
             colors: [Color(0xFF12323F), AppColors.night, AppColors.nightDeep],
           ),
         ),
-        child: AnimatedBuilder(
-          animation: _c,
-          builder: (context, _) => Column(
-            children: [
-              const Spacer(flex: 5),
-              Transform.scale(
-                scale: 0.6 + 0.4 * _scale.value,
-                child: Opacity(
-                  opacity: _scale.value.clamp(0, 1).toDouble(),
-                  child: AppLogo(size: 132, glow: _glow.value),
-                ),
-              ),
-              const SizedBox(height: 28),
-              Opacity(
-                opacity: _text.value,
-                child: Transform.translate(
-                  offset: Offset(0, 12 * (1 - _text.value)),
-                  child: Column(
-                    children: [
-                      Text('My Home',
-                          style: text.headlineMedium?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.5)),
-                      const SizedBox(height: 6),
-                      Text('Your home, in your hand',
-                          style: text.bodyLarge?.copyWith(
-                              color: Colors.white.withValues(alpha: 0.65))),
-                    ],
+        child: SafeArea(
+          child: AnimatedBuilder(
+            animation: _c,
+            builder: (context, _) => Stack(
+              children: [
+                // The logo sits at the exact center of the screen.
+                Center(
+                  child: Transform.scale(
+                    scale: 0.6 + 0.4 * _scale.value,
+                    child: Opacity(
+                      opacity: _scale.value.clamp(0, 1).toDouble(),
+                      child: AppLogo(size: 168, glow: _glow.value),
+                    ),
                   ),
                 ),
-              ),
-              const Spacer(flex: 4),
-              Opacity(
-                opacity: _text.value,
-                child: const SizedBox(
-                  width: 28,
-                  height: 28,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2.5, color: AppColors.glow),
+                // Name under the logo, without moving the logo off center.
+                Align(
+                  alignment: const Alignment(0, 0.42),
+                  child: Opacity(
+                    opacity: _text.value,
+                    child: Transform.translate(
+                      offset: Offset(0, 12 * (1 - _text.value)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('My Home',
+                              style: text.headlineMedium?.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5)),
+                          const SizedBox(height: 6),
+                          Text('Your home, in your hand',
+                              style: text.bodyLarge?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.65))),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 56),
-            ],
+                Positioned(
+                  left: 24,
+                  right: 24,
+                  bottom: 32,
+                  child: Opacity(
+                    opacity: _credit.value,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.5, color: AppColors.glow),
+                        ),
+                        const SizedBox(height: 28),
+                        Text('DESIGNED BY',
+                            style: text.labelSmall?.copyWith(
+                                color: AppColors.glow,
+                                letterSpacing: 2,
+                                fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 6),
+                        Text('Mr. Salim GHOGGALI  &  Mr. Karim HADDAD',
+                            textAlign: TextAlign.center,
+                            style: text.bodyMedium?.copyWith(
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
