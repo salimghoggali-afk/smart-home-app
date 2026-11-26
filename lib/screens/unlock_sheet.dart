@@ -22,8 +22,13 @@ Future<bool> askOperatorCode(
           numeric: true,
           loadInfo: lock.operatorInfo,
           check: lock.unlockOperator,
-          wrongMessage: 'This code is not valid today. Check the 8 digits, or '
-              'ask for today\'s code again.',
+          wrongMessage: () {
+            final day = lock.lastDay;
+            final src = lock.lastTimeSource == 'phone' ? 'phone clock' : 'server time';
+            return 'This code is not valid today'
+                '${day == null ? '' : ' ($day, Algeria, from $src)'}. '
+                'Check the 8 digits, or ask for today\'s code again.';
+          },
         ),
       ) ==
       true;
@@ -43,7 +48,7 @@ Future<bool> askOwnPassword(
           subtitle: 'Enter the password of $email to open Settings.',
           fieldLabel: 'Your password',
           check: lock.unlockSettings,
-          wrongMessage: 'The password is wrong.',
+          wrongMessage: () => 'The password is wrong.',
         ),
       ) ==
       true;
@@ -71,7 +76,7 @@ class _UnlockBox extends StatefulWidget {
   final String fieldLabel;
   final bool numeric;
   final Future<bool> Function(String) check;
-  final String wrongMessage;
+  final String Function() wrongMessage;
   final Future<_Info> Function()? loadInfo;
 
   @override
@@ -138,7 +143,7 @@ class _UnlockBoxState extends State<_UnlockBox> {
       // Slow down repeated guesses.
       if (_fails >= 3) await Future<void>.delayed(Duration(seconds: 2 * _fails));
       if (!mounted) return;
-      setState(() => _error = widget.wrongMessage);
+      setState(() => _error = widget.wrongMessage());
       _field.clear();
     } catch (e) {
       if (mounted) setState(() => _error = AuthService.message(e));

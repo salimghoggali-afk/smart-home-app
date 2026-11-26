@@ -119,6 +119,10 @@ class AuthService {
     if (e is FirebaseException && e.code == 'permission-denied') {
       return 'The database refused access. Check the database rules.';
     }
-    return 'Something went wrong. Please try again.';
+    if (e is FirebaseException) {
+      return 'Firebase error (${e.code}): ${e.message ?? ''}';
+    }
+    final t = e.toString();
+    return 'Something went wrong: ${t.length > 160 ? t.substring(0, 160) : t}';
   }
 }

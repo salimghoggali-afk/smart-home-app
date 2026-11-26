@@ -38,6 +38,11 @@ class AdminLock {
   static const _shareB = String.fromEnvironment('OP_B');
 
   DateTime? _operatorUntil;
+
+  /// The Algeria date the last code was checked against, and where the time
+  /// came from ('server' or 'phone'). Shown when a code is refused.
+  String? lastDay;
+  String? lastTimeSource;
   DateTime? _settingsUntil;
 
   bool get operatorUnlocked =>
@@ -74,6 +79,7 @@ class AdminLock {
     final secret = _master();
     if (secret == null) return false;
     final day = algeriaDay(await serverNow());
+    lastDay = day;
     final expected = await codeFor(secret, day);
     final ok = _sameText(expected, code.replaceAll(RegExp(r'\s'), ''));
     if (ok) _operatorUntil = DateTime.now().add(unlockFor);
@@ -103,13 +109,20 @@ class AdminLock {
   Future<void> changeOwnPassword(String newPassword) =>
       _auth.currentUser!.updatePassword(newPassword);
 
-  /// Current time corrected with the Firebase server clock.
+  /// Current time corrected with the Firebase server clock. Falls back to
+  /// the phone clock if the server does not answer within a few seconds.
   Future<DateTime> serverNow() async {
     try {
-      final snap = await _db.ref('.info/serverTimeOffset').get();
-      final offset = (snap.value as num?)?.toInt() ?? 0;
+      final ev = await _db
+          .ref('.info/serverTimeOffset')
+          .onValue
+          .first
+          .timeout(const Duration(seconds: 5));
+      final offset = (ev.snapshot.value as num?)?.toInt() ?? 0;
+      lastTimeSource = 'server';
       return DateTime.now().toUtc().add(Duration(milliseconds: offset));
     } catch (_) {
+      lastTimeSource = 'phone';
       return DateTime.now().toUtc();
     }
   }
