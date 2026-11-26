@@ -1,22 +1,26 @@
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/admin_lock.dart';
 import '../core/auth_service.dart';
 
-/// Asks for the configuration code. Returns true when unlocked.
-Future<bool> askConfigurationCode(BuildContext context, AdminLock lock) async {
-  if (lock.adminUnlocked) return true;
+/// Asks for today's operator code. Returns true when unlocked.
+Future<bool> askOperatorCode(
+    BuildContext context, AdminLock lock, String projectId) async {
+  if (lock.operatorUnlocked) return true;
   return await showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
         showDragHandle: true,
         builder: (_) => _UnlockSheet(
-          icon: Icons.admin_panel_settings_outlined,
-          title: 'Configuration code',
-          fieldLabel: 'Configuration code',
-          loadInfo: lock.lockInfo,
-          check: lock.unlockAdmin,
-          wrongMessage: 'This code is not right.',
+          icon: Icons.engineering_outlined,
+          title: 'Operator code',
+          subtitle: 'Enter today\'s 8-digit code. It changes every day.',
+          fieldLabel: 'Today\'s code',
+          numeric: true,
+          loadInfo: lock.operatorInfo,
+          check: (c) => lock.unlockOperator(c, projectId),
+          wrongMessage: 'This code is not valid today.',
         ),
       ) ==
       true;
@@ -51,15 +55,17 @@ class _UnlockSheet extends StatefulWidget {
     required this.wrongMessage,
     this.subtitle,
     this.loadInfo,
+    this.numeric = false,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
   final String fieldLabel;
+  final bool numeric;
   final Future<bool> Function(String) check;
   final String wrongMessage;
-  final Future<({bool hasCode, String contact})> Function()? loadInfo;
+  final Future<({bool ready, String contact, String? problem})> Function()? loadInfo;
 
   @override
   State<_UnlockSheet> createState() => _UnlockSheetState();
@@ -70,7 +76,7 @@ class _UnlockSheetState extends State<_UnlockSheet> {
   bool _busy = false;
   bool _show = false;
   String? _error;
-  ({bool hasCode, String contact})? _info;
+  ({bool ready, String contact, String? problem})? _info;
   int _fails = 0;
 
   @override
@@ -118,7 +124,7 @@ class _UnlockSheetState extends State<_UnlockSheet> {
     final text = Theme.of(context).textTheme;
     final info = _info;
     final waitingInfo = widget.loadInfo != null && info == null;
-    final noCode = info != null && !info.hasCode;
+    final blocked = info != null && !info.ready;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -149,18 +155,22 @@ class _UnlockSheetState extends State<_UnlockSheet> {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: scheme.secondaryContainer,
+                color: blocked ? scheme.errorContainer : scheme.secondaryContainer,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Row(children: [
-                Icon(Icons.support_agent_rounded, color: scheme.onSecondaryContainer),
+                Icon(Icons.support_agent_rounded,
+                    color: blocked
+                        ? scheme.onErrorContainer
+                        : scheme.onSecondaryContainer),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    noCode
-                        ? 'No configuration code is set for this home yet. ${info.contact}'
-                        : 'This menu is for the installer. ${info.contact}',
-                    style: TextStyle(color: scheme.onSecondaryContainer),
+                    blocked ? '${info.problem} ${info.contact}' : info.contact,
+                    style: TextStyle(
+                        color: blocked
+                            ? scheme.onErrorContainer
+                            : scheme.onSecondaryContainer),
                   ),
                 ),
               ]),
@@ -169,24 +179,43 @@ class _UnlockSheetState extends State<_UnlockSheet> {
           const SizedBox(height: 20),
           if (waitingInfo)
             const Center(child: CircularProgressIndicator())
-          else if (!noCode) ...[
+          else if (!blocked) ...[
             TextField(
               controller: _field,
               autofocus: true,
-              obscureText: !_show,
+              obscureText: !widget.numeric && !_show,
               autocorrect: false,
               enableSuggestions: false,
+              keyboardType:
+                  widget.numeric ? TextInputType.number : TextInputType.visiblePassword,
+              inputFormatters: widget.numeric
+                  ? [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(AdminLock.digits),
+                    ]
+                  : null,
+              textAlign: widget.numeric ? TextAlign.center : TextAlign.start,
+              style: widget.numeric
+                  ? text.headlineSmall?.copyWith(letterSpacing: 6, fontWeight: FontWeight.w600)
+                  : null,
               onSubmitted: (_) => _submit(),
+              onChanged: widget.numeric
+                  ? (v) {
+                      if (v.length == AdminLock.digits) _submit();
+                    }
+                  : null,
               decoration: InputDecoration(
                 labelText: widget.fieldLabel,
-                prefixIcon: const Icon(Icons.key_rounded),
+                prefixIcon: widget.numeric ? null : const Icon(Icons.key_rounded),
                 errorText: _error,
-                suffixIcon: IconButton(
-                  icon: Icon(_show
-                      ? Icons.visibility_off_outlined
-                      : Icons.visibility_outlined),
-                  onPressed: () => setState(() => _show = !_show),
-                ),
+                suffixIcon: widget.numeric
+                    ? null
+                    : IconButton(
+                        icon: Icon(_show
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                        onPressed: () => setState(() => _show = !_show),
+                      ),
               ),
             ),
             const SizedBox(height: 20),

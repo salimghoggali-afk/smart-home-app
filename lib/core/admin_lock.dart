@@ -1,19 +1,21 @@
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 
-/// The configuration code that protects the Configuration menu, and the
-/// re-check of the user's own password that protects Settings.
+/// Locks for the Operator menu (daily operator code) and the Settings menu
+/// (the user's own password).
 ///
-/// The configuration code belongs to the installer, not to the users. It is
-/// never stored in the app. The installer puts one string at `/admin` with the
-/// Firebase console, in the form `pbkdf2-sha256$<rounds>$<salt b64>$<hash b64>`
-/// (the QR maker page makes it). The rules let nobody write it from the app.
-/// `/adminContact` holds the text shown on the lock screen.
-/// An unlock lasts a few minutes, then the menu locks again.
+/// Daily operator code:
+/// - Each home has a random secret at `/operatorSecret` (base64, 32 bytes),
+///   added by the installer with the Firebase console. The rules let only the
+///   owner's account read it and nobody write it from the app.
+/// - Today's code = `HMAC-SHA256(secret, "myhome-op-v1|projectId|YYYY-MM-DD")`,
+///   cut to 8 digits the same way authenticator apps do (RFC 4226).
+/// - The day is the date in Algeria (UTC+1, no daylight saving), taken from
+///   Firebase server time, so a wrong phone clock does not matter.
+/// - The installer gets the code from the generator on the QR maker page.
 class AdminLock {
   AdminLock({FirebaseDatabase? db, FirebaseAuth? auth})
       : _dbOverride = db,
@@ -25,45 +27,61 @@ class AdminLock {
   FirebaseAuth get _auth => _authOverride ?? FirebaseAuth.instance;
 
   static const unlockFor = Duration(minutes: 5);
-  static const defaultRounds = 210000;
+  static const digits = 8;
   static const defaultContact =
-      'To get the configuration code, contact Mr. Salim GHOGGALI '
+      'To get today\'s operator code, contact Mr. Salim GHOGGALI '
       '(+213 665 98 09 64) or Mr. Karim HADDAD (+213 674 43 45 78).';
 
-  DateTime? _adminUntil;
+  DateTime? _operatorUntil;
   DateTime? _settingsUntil;
 
-  bool get adminUnlocked =>
-      _adminUntil != null && DateTime.now().isBefore(_adminUntil!);
+  bool get operatorUnlocked =>
+      _operatorUntil != null && DateTime.now().isBefore(_operatorUntil!);
   bool get settingsUnlocked =>
       _settingsUntil != null && DateTime.now().isBefore(_settingsUntil!);
 
   void lockAll() {
-    _adminUntil = null;
+    _operatorUntil = null;
     _settingsUntil = null;
   }
 
-  /// Whether a code is set for this home, and the contact text to show.
-  Future<({bool hasCode, String contact})> lockInfo() async {
+  /// The contact text, and whether this account can check operator codes.
+  Future<({bool ready, String contact, String? problem})> operatorInfo() async {
     var contact = defaultContact;
-    var hasCode = false;
     try {
       final c = await _db.ref('adminContact').get();
       final cv = c.value;
       if (cv is String && cv.trim().isNotEmpty) contact = cv.trim();
-      final a = await _db.ref('admin').get();
-      hasCode = parseRecord(a.value) != null;
     } catch (_) {}
-    return (hasCode: hasCode, contact: contact);
+    try {
+      final s = await _db.ref('operatorSecret').get();
+      if (_decodeSecret(s.value) == null) {
+        return (
+          ready: false,
+          contact: contact,
+          problem: 'No operator secret is set for this home yet.'
+        );
+      }
+      return (ready: true, contact: contact, problem: null);
+    } catch (_) {
+      return (
+        ready: false,
+        contact: contact,
+        problem: 'Operator tools open only on the owner\'s account. '
+            'Sign in with the owner account on this phone.'
+      );
+    }
   }
 
-  /// Checks the configuration code. On success the Configuration menu unlocks.
-  Future<bool> unlockAdmin(String code) async {
-    final snap = await _db.ref('admin').get();
-    final v = snap.value;
-    if (v is! String) return false;
-    final ok = await verify(code, v);
-    if (ok) _adminUntil = DateTime.now().add(unlockFor);
+  /// Checks today's operator code. On success the Operator menu unlocks.
+  Future<bool> unlockOperator(String code, String projectId) async {
+    final snap = await _db.ref('operatorSecret').get();
+    final secret = _decodeSecret(snap.value);
+    if (secret == null) return false;
+    final day = algeriaDay(await serverNow());
+    final expected = await codeFor(secret, projectId, day);
+    final ok = _sameText(expected, code.replaceAll(RegExp(r'\s'), ''));
+    if (ok) _operatorUntil = DateTime.now().add(unlockFor);
     return ok;
   }
 
@@ -87,71 +105,65 @@ class AdminLock {
     }
   }
 
-  /// Changes the user's own password. Needs a recent unlock of Settings.
   Future<void> changeOwnPassword(String newPassword) =>
       _auth.currentUser!.updatePassword(newPassword);
 
-  // ---- Record format ----
-
-  static const _sep = r'$';
-
-  static ({int rounds, List<int> salt, List<int> hash})? parseRecord(Object? v) {
-    if (v is! String) return null;
-    final parts = v.trim().split(_sep);
-    if (parts.length != 4 || parts[0] != 'pbkdf2-sha256') return null;
-    final rounds = int.tryParse(parts[1]);
-    if (rounds == null || rounds < 10000) return null;
+  /// Current time corrected with the Firebase server clock.
+  Future<DateTime> serverNow() async {
     try {
-      return (
-        rounds: rounds,
-        salt: base64Decode(parts[2]),
-        hash: base64Decode(parts[3]),
-      );
+      final snap = await _db.ref('.info/serverTimeOffset').get();
+      final offset = (snap.value as num?)?.toInt() ?? 0;
+      return DateTime.now().toUtc().add(Duration(milliseconds: offset));
+    } catch (_) {
+      return DateTime.now().toUtc();
+    }
+  }
+
+  // ---- Pure functions, shared with the generator page and the tests ----
+
+  /// The date in Algeria (UTC+1 all year) as YYYY-MM-DD.
+  static String algeriaDay(DateTime nowUtc) {
+    final d = nowUtc.toUtc().add(const Duration(hours: 1));
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  }
+
+  /// The 8-digit code for one home on one day.
+  static Future<String> codeFor(
+      List<int> secret, String projectId, String day) async {
+    final mac = await Hmac.sha256().calculateMac(
+      utf8.encode('myhome-op-v1|$projectId|$day'),
+      secretKey: SecretKey(secret),
+    );
+    final h = mac.bytes;
+    final o = h[h.length - 1] & 0x0f;
+    final bin = ((h[o] & 0x7f) << 24) |
+        (h[o + 1] << 16) |
+        (h[o + 2] << 8) |
+        h[o + 3];
+    var mod = 1;
+    for (var i = 0; i < digits; i++) {
+      mod *= 10;
+    }
+    return (bin % mod).toString().padLeft(digits, '0');
+  }
+
+  static List<int>? _decodeSecret(Object? v) {
+    if (v is! String) return null;
+    try {
+      final b = base64Decode(v.trim());
+      return b.length >= 16 ? b : null;
     } catch (_) {
       return null;
     }
   }
 
-  /// Makes the string stored at `/admin` for a code. The installer normally
-  /// makes it with the QR maker page; this is used by the tests.
-  static Future<String> makeRecord(String code,
-      {List<int>? salt, int rounds = defaultRounds}) async {
-    final s = salt ?? _randomBytes(16);
-    final h = await _derive(code, s, rounds);
-    return ['pbkdf2-sha256', '$rounds', base64Encode(s), base64Encode(h)]
-        .join(_sep);
-  }
-
-  /// Checks a code against a stored record string.
-  static Future<bool> verify(String code, String record) async {
-    final rec = parseRecord(record);
-    if (rec == null) return false;
-    final actual = await _derive(code, rec.salt, rec.rounds);
-    return _sameBytes(actual, rec.hash);
-  }
-
-  static Future<List<int>> _derive(
-      String code, List<int> salt, int rounds) async {
-    final algo = Pbkdf2(
-      macAlgorithm: Hmac.sha256(),
-      iterations: rounds,
-      bits: 256,
-    );
-    final key = await algo.deriveKeyFromPassword(password: code, nonce: salt);
-    return key.extractBytes();
-  }
-
-  static List<int> _randomBytes(int n) {
-    final r = Random.secure();
-    return List<int>.generate(n, (_) => r.nextInt(256));
-  }
-
-  // Compares in constant time, so timing does not leak how close a guess was.
-  static bool _sameBytes(List<int> a, List<int> b) {
+  // Compares in constant time.
+  static bool _sameText(String a, String b) {
     if (a.length != b.length) return false;
     var diff = 0;
     for (var i = 0; i < a.length; i++) {
-      diff |= a[i] ^ b[i];
+      diff |= a.codeUnitAt(i) ^ b.codeUnitAt(i);
     }
     return diff == 0;
   }

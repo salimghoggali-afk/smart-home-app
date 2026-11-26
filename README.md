@@ -1,17 +1,39 @@
-# smarthome
+# My Home (smart home app)
 
-A new Flutter project.
+Flutter 3 Android app that links at run time to a Firebase project (by QR code),
+signs people in with email and password, and lets an installer configure the home
+in the Realtime Database.
 
-## Getting Started
+## Menu (v1.3)
 
-This project is a starting point for a Flutter application.
+- **Home**
+- **Operator** (needs today's operator code): Configuration, Unlink the home
+- **Settings** (needs the user's own password): Profile, Display
+- **Sign out**
 
-A few resources to get you started if this is your first Flutter project:
+## Daily operator code
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+- Each home has a random secret at `/operatorSecret` in the Realtime Database
+  (base64, 32 bytes). The installer adds it with the Firebase console. The rules
+  let only the owner account read it, and nobody write it from the app.
+- Today's code = `HMAC-SHA256(secret, "myhome-op-v1|<projectId>|<YYYY-MM-DD>")`,
+  cut to 8 digits (RFC 4226 dynamic truncation).
+- The day is the date in Algeria (UTC+1), from Firebase server time, so a wrong
+  phone clock does not matter.
+- The installer gets today's code from the generator on the QR maker page.
+- Code: `lib/core/admin_lock.dart`, tests: `test/admin_lock_test.dart`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Database rules
+
+Paste `database.rules.json` into Firebase console > Realtime Database > Rules.
+
+## Build
+
+```
+flutter pub get
+flutter test
+flutter build apk --release
+```
+
+Release signing needs `android/key.properties` and the keystore, which are kept
+outside the repository.
