@@ -7,7 +7,7 @@ import '../core/auth_service.dart';
 import '../core/display_settings.dart';
 import '../core/firebase_link_config.dart';
 
-const appVersion = '1.3.0';
+const appVersion = '1.3.1';
 
 Widget _section(BuildContext context, String t) {
   final scheme = Theme.of(context).colorScheme;
