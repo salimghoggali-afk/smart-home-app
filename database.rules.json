@@ -1,0 +1,31 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "owner": {
+      ".read": true,
+      ".write": "auth != null && !data.exists() && newData.val() === auth.uid"
+    },
+
+    "members": {
+      ".read": "auth != null && root.child('owner').val() === auth.uid",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && root.child('owner').val() === auth.uid"
+      }
+    },
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('owner').val() === auth.uid)",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+
+    "homes": {
+      ".read": "auth != null && (root.child('owner').val() === auth.uid || root.child('members').child(auth.uid).val() === true)",
+      ".write": "auth != null && root.child('owner').val() === auth.uid"
+    }
+  }
+}
