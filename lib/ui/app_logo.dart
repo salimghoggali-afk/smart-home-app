@@ -43,6 +43,12 @@ class _LogoPainter extends CustomPainter {
         ).createShader(rect),
     );
 
+    // Draw the house larger than the tile grid so details read at small sizes.
+    canvas.save();
+    canvas.translate(s / 2, s / 2);
+    canvas.scale(1.2);
+    canvas.translate(-s / 2, -s / 2 + s * 0.05);
+
     // House outline.
     final stroke = Paint()
       ..color = Colors.white
@@ -96,6 +102,7 @@ class _LogoPainter extends CustomPainter {
         arc,
       );
     }
+    canvas.restore();
   }
 
   @override
