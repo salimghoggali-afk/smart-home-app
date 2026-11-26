@@ -7,15 +7,17 @@ import 'package:firebase_database/firebase_database.dart';
 /// Locks for the Operator menu (daily operator code) and the Settings menu
 /// (the user's own password).
 ///
-/// Daily operator code:
-/// - Each home has a random secret at `/operatorSecret` (base64, 32 bytes),
-///   added by the installer with the Firebase console. The rules let only the
-///   owner's account read it and nobody write it from the app.
-/// - Today's code = `HMAC-SHA256(secret, "myhome-op-v1|projectId|YYYY-MM-DD")`,
-///   cut to 8 digits the same way authenticator apps do (RFC 4226).
+/// Daily operator code (v2):
+/// - One master secret for every installation. It is not in the source code:
+///   the release build gets it as two random-looking halves with
+///   `--dart-define-from-file=operator-key.json` (keys OP_A and OP_B), and the
+///   app joins them with XOR only when it checks a code.
+/// - Today's code = `HMAC-SHA256(master, "myhome-op-v2|YYYY-MM-DD")`, cut to
+///   8 digits the same way authenticator apps do (RFC 4226).
+/// - The same code works in every home, on that day only.
 /// - The day is the date in Algeria (UTC+1, no daylight saving), taken from
 ///   Firebase server time, so a wrong phone clock does not matter.
-/// - The installer gets the code from the generator on the QR maker page.
+/// - Salim and Karim get the code from the generator page.
 class AdminLock {
   AdminLock({FirebaseDatabase? db, FirebaseAuth? auth})
       : _dbOverride = db,
@@ -32,6 +34,9 @@ class AdminLock {
       'To get today\'s operator code, contact Mr. Salim GHOGGALI '
       '(+213 665 98 09 64) or Mr. Karim HADDAD (+213 674 43 45 78).';
 
+  static const _shareA = String.fromEnvironment('OP_A');
+  static const _shareB = String.fromEnvironment('OP_B');
+
   DateTime? _operatorUntil;
   DateTime? _settingsUntil;
 
@@ -45,7 +50,7 @@ class AdminLock {
     _settingsUntil = null;
   }
 
-  /// The contact text, and whether this account can check operator codes.
+  /// The contact text, and whether this copy of the app can check codes.
   Future<({bool ready, String contact, String? problem})> operatorInfo() async {
     var contact = defaultContact;
     try {
@@ -53,33 +58,23 @@ class AdminLock {
       final cv = c.value;
       if (cv is String && cv.trim().isNotEmpty) contact = cv.trim();
     } catch (_) {}
-    try {
-      final s = await _db.ref('operatorSecret').get();
-      if (_decodeSecret(s.value) == null) {
-        return (
-          ready: false,
-          contact: contact,
-          problem: 'No operator secret is set for this home yet.'
-        );
-      }
-      return (ready: true, contact: contact, problem: null);
-    } catch (_) {
+    if (_master() == null) {
       return (
         ready: false,
         contact: contact,
-        problem: 'Operator tools open only on the owner\'s account. '
-            'Sign in with the owner account on this phone.'
+        problem: 'This copy of the app has no operator key. '
+            'Install the official version.'
       );
     }
+    return (ready: true, contact: contact, problem: null);
   }
 
   /// Checks today's operator code. On success the Operator menu unlocks.
-  Future<bool> unlockOperator(String code, String projectId) async {
-    final snap = await _db.ref('operatorSecret').get();
-    final secret = _decodeSecret(snap.value);
+  Future<bool> unlockOperator(String code) async {
+    final secret = _master();
     if (secret == null) return false;
     final day = algeriaDay(await serverNow());
-    final expected = await codeFor(secret, projectId, day);
+    final expected = await codeFor(secret, day);
     final ok = _sameText(expected, code.replaceAll(RegExp(r'\s'), ''));
     if (ok) _operatorUntil = DateTime.now().add(unlockFor);
     return ok;
@@ -128,11 +123,10 @@ class AdminLock {
     return '${d.year}-${two(d.month)}-${two(d.day)}';
   }
 
-  /// The 8-digit code for one home on one day.
-  static Future<String> codeFor(
-      List<int> secret, String projectId, String day) async {
+  /// The 8-digit code for one day. The same in every home.
+  static Future<String> codeFor(List<int> secret, String day) async {
     final mac = await Hmac.sha256().calculateMac(
-      utf8.encode('myhome-op-v1|$projectId|$day'),
+      utf8.encode('myhome-op-v2|$day'),
       secretKey: SecretKey(secret),
     );
     final h = mac.bytes;
@@ -148,15 +142,19 @@ class AdminLock {
     return (bin % mod).toString().padLeft(digits, '0');
   }
 
-  static List<int>? _decodeSecret(Object? v) {
-    if (v is! String) return null;
+  /// Joins the two halves of the master secret. Null in builds without them.
+  static List<int>? joinShares(String a, String b) {
     try {
-      final b = base64Decode(v.trim());
-      return b.length >= 16 ? b : null;
+      final x = base64Decode(a.trim());
+      final y = base64Decode(b.trim());
+      if (x.length < 16 || x.length != y.length) return null;
+      return [for (var i = 0; i < x.length; i++) x[i] ^ y[i]];
     } catch (_) {
       return null;
     }
   }
+
+  static List<int>? _master() => joinShares(_shareA, _shareB);
 
   // Compares in constant time.
   static bool _sameText(String a, String b) {

@@ -45,7 +45,7 @@ class _HomeShellState extends State<HomeShell> {
   _Page _page = _Page.home;
 
   Future<bool> _operator() =>
-      askOperatorCode(context, _lock, widget.config.projectId);
+      askOperatorCode(context, _lock);
   Future<bool> _settings() =>
       askOwnPassword(context, _lock, widget.user.email ?? '');
 

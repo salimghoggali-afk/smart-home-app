@@ -6,10 +6,6 @@
       ".read": true,
       ".write": "auth != null && !data.exists() && newData.val() === auth.uid"
     },
-    "operatorSecret": {
-      ".read": "auth != null && root.child('owner').val() === auth.uid",
-      ".write": false
-    },
     "adminContact": {
       ".read": true,
       ".write": false

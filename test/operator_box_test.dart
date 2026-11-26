@@ -16,11 +16,11 @@ class _FakeLock extends AdminLock {
       (
         ready: ready,
         contact: AdminLock.defaultContact,
-        problem: ready ? null : 'No operator secret is set for this home yet.'
+        problem: ready ? null : 'This copy of the app has no operator key.'
       );
 
   @override
-  Future<bool> unlockOperator(String code, String projectId) async {
+  Future<bool> unlockOperator(String code) async {
     unlocked = code == '12345678';
     return unlocked;
   }
@@ -32,7 +32,7 @@ Future<bool?> _open(WidgetTester t, AdminLock lock) async {
     home: Scaffold(
       body: Builder(
         builder: (c) => TextButton(
-          onPressed: () async => result = await askOperatorCode(c, lock, 'p'),
+          onPressed: () async => result = await askOperatorCode(c, lock),
           child: const Text('open'),
         ),
       ),
@@ -69,7 +69,7 @@ void main() {
       home: Scaffold(
         body: Builder(
           builder: (c) => TextButton(
-            onPressed: () async => result = await askOperatorCode(c, lock, 'p'),
+            onPressed: () async => result = await askOperatorCode(c, lock),
             child: const Text('open'),
           ),
         ),
@@ -85,11 +85,11 @@ void main() {
     expect(find.text('Access granted.'), findsOneWidget);
   });
 
-  testWidgets('home without a secret explains the problem', (t) async {
+  testWidgets('app without the operator key explains the problem', (t) async {
     await _open(t, _FakeLock(ready: false));
     await t.enterText(find.byType(TextField), '12345678');
     await t.tap(find.text('Verify and open'));
     await t.pumpAndSettle();
-    expect(find.textContaining('No operator secret'), findsOneWidget);
+    expect(find.textContaining('no operator key'), findsOneWidget);
   });
 }

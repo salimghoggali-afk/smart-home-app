@@ -7,7 +7,7 @@ import '../core/auth_service.dart';
 /// Shows a box asking for today's operator code. Returns true when the code
 /// is valid and the Operator menu is unlocked.
 Future<bool> askOperatorCode(
-    BuildContext context, AdminLock lock, String projectId) async {
+    BuildContext context, AdminLock lock) async {
   if (lock.operatorUnlocked) return true;
   return await showDialog<bool>(
         context: context,
@@ -21,7 +21,7 @@ Future<bool> askOperatorCode(
           fieldLabel: 'Today\'s code',
           numeric: true,
           loadInfo: lock.operatorInfo,
-          check: (c) => lock.unlockOperator(c, projectId),
+          check: lock.unlockOperator,
           wrongMessage: 'This code is not valid today. Check the 8 digits, or '
               'ask for today\'s code again.',
         ),
