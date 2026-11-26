@@ -1,42 +1,31 @@
-import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 
-import 'models/user.dart';
-import 'screens/wrapper.dart';
-import 'services/auth.dart';
-import 'shared/constants.dart';
+import 'core/link_service.dart';
+import 'screens/splash_screen.dart';
+import 'ui/theme.dart';
 
-Future<void> main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  runApp(MyApp());
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
+  );
+  runApp(MyHomeApp(linkService: LinkService()));
 }
 
-class MyApp extends StatelessWidget {
+class MyHomeApp extends StatelessWidget {
+  const MyHomeApp({super.key, required this.linkService});
+
+  final LinkService linkService;
+
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(
-      SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-      ),
-    );
-    return StreamProvider<AppUser>.value(
-      initialData: null,
-      value: AuthService().user,
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: Constants.appName,
-        theme: ThemeData(
-            primarySwatch: Colors.teal,
-            primaryColor: Colors.teal,
-            accentColor: Colors.red,
-            buttonTheme: ButtonThemeData(
-              buttonColor: Colors.teal,
-            )),
-        home: Wrapper(),
-      ),
+    return MaterialApp(
+      title: 'My Home',
+      debugShowCheckedModeBanner: false,
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      home: SplashScreen(linkService: linkService),
     );
   }
 }
