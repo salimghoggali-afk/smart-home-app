@@ -6,8 +6,11 @@ import '../core/admin_lock.dart';
 import '../core/auth_service.dart';
 import '../core/display_settings.dart';
 import '../core/firebase_link_config.dart';
+import '../core/home_repository.dart';
+import '../core/visibility_settings.dart';
+import '../ui/room_icons.dart';
 
-const appVersion = '1.4.1';
+const appVersion = '1.5.0';
 
 Widget _section(BuildContext context, String t) {
   final scheme = Theme.of(context).colorScheme;
@@ -229,6 +232,113 @@ class DisplayScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Settings > Shown on this phone: choose which rooms this phone shows.
+/// Opens only with the signed-in account's password, so whoever uses the
+/// phone cannot undo it.
+class VisibilityScreen extends StatelessWidget {
+  const VisibilityScreen({super.key, required this.repo});
+  final HomeRepository repo;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = VisibilitySettings.instance;
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return ListenableBuilder(
+      listenable: v,
+      builder: (context, _) => StreamBuilder<Home?>(
+        stream: repo.watchHome(),
+        builder: (context, snap) {
+          final home = snap.data;
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            children: [
+              Text(
+                'Choose what this phone shows. Use it, for example, on a child\'s '
+                'phone to show only their room. The choice is saved on this '
+                'phone only, and only your password can change it.',
+                style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: RadioGroup<bool>(
+                  groupValue: v.limited,
+                  onChanged: (x) {
+                    if (x != null) v.save(limited: x, rooms: v.shownRooms);
+                  },
+                  child: const Column(children: [
+                    RadioListTile<bool>(
+                      value: false,
+                      title: Text('Show the whole home'),
+                    ),
+                    RadioListTile<bool>(
+                      value: true,
+                      title: Text('Show only the rooms I choose'),
+                      subtitle: Text('Rooms added later stay hidden until you tick them.'),
+                    ),
+                  ]),
+                ),
+              ),
+              if (v.limited) ...[
+                _section(context, 'Rooms shown on this phone'),
+                if (home == null)
+                  snap.connectionState == ConnectionState.waiting
+                      ? const Center(child: CircularProgressIndicator())
+                      : const Text('No home yet. Create it in Operator > Configuration.')
+                else if (home.roomCount == 0)
+                  const Text('No rooms yet. Add them in Operator > Configuration.')
+                else
+                  for (final f in home.floors)
+                    if (f.rooms.isNotEmpty)
+                      Card(
+                        child: Column(children: [
+                          ListTile(
+                            title: Text(f.name,
+                                style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                            trailing: TextButton(
+                              onPressed: () {
+                                final ids = f.rooms.map((r) => r.id).toSet();
+                                final all = ids.every(v.shownRooms.contains);
+                                v.save(
+                                    limited: true,
+                                    rooms: all
+                                        ? v.shownRooms.difference(ids)
+                                        : v.shownRooms.union(ids));
+                              },
+                              child: Text(f.rooms.every((r) => v.shownRooms.contains(r.id))
+                                  ? 'Hide all'
+                                  : 'Show all'),
+                            ),
+                          ),
+                          for (final r in f.rooms)
+                            CheckboxListTile(
+                              secondary: Icon(roomIcon(r.type)),
+                              title: Text(r.name),
+                              subtitle: Text(capitalize(r.type)),
+                              value: v.shownRooms.contains(r.id),
+                              onChanged: (on) {
+                                final next = {...v.shownRooms};
+                                on == true ? next.add(r.id) : next.remove(r.id);
+                                v.save(limited: true, rooms: next);
+                              },
+                            ),
+                        ]),
+                      ),
+                const SizedBox(height: 8),
+                Text(
+                  'Choosing the devices and options inside each room will come '
+                  'here once devices are added to the app.',
+                  style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
