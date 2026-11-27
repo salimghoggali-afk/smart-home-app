@@ -10,7 +10,7 @@ import '../core/home_repository.dart';
 import '../core/visibility_settings.dart';
 import '../ui/room_icons.dart';
 
-const appVersion = '1.5.0';
+const appVersion = '1.6.0';
 
 Widget _section(BuildContext context, String t) {
   final scheme = Theme.of(context).colorScheme;
@@ -251,10 +251,10 @@ class VisibilityScreen extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     return ListenableBuilder(
       listenable: v,
-      builder: (context, _) => StreamBuilder<Home?>(
-        stream: repo.watchHome(),
+      builder: (context, _) => StreamBuilder<List<Home>>(
+        stream: repo.watchHomes(),
         builder: (context, snap) {
-          final home = snap.data;
+          final home = snap.data == null ? null : v.pick(snap.data!);
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
@@ -319,7 +319,9 @@ class VisibilityScreen extends StatelessWidget {
                             CheckboxListTile(
                               secondary: Icon(roomIcon(r.type)),
                               title: Text(r.name),
-                              subtitle: Text(capitalize(r.type)),
+                              subtitle: Text(r.subRooms.isEmpty
+                                  ? capitalize(r.type)
+                                  : '${capitalize(r.type)}, with ${r.subRooms.map((x) => x.name).join(', ')}'),
                               value: v.shownRooms.contains(r.id),
                               onChanged: (on) {
                                 final next = {...v.shownRooms};
@@ -331,8 +333,8 @@ class VisibilityScreen extends StatelessWidget {
                       ),
                 const SizedBox(height: 8),
                 Text(
-                  'Choosing the devices and options inside each room will come '
-                  'here once devices are added to the app.',
+                  'A room is shown with its sub-rooms and lamps. Choosing single '
+                  'devices inside a room can be added later.',
                   style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                 ),
               ],

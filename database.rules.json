@@ -25,7 +25,37 @@
     },
     "homes": {
       ".read": "auth != null && (root.child('owner').val() === auth.uid || root.child('members').child(auth.uid).val() === true)",
-      ".write": "auth != null && root.child('owner').val() === auth.uid"
+      ".write": "auth != null && root.child('owner').val() === auth.uid",
+      "$home": {
+        "floors": {
+          "$floor": {
+            "lamps": {
+              "$lamp": {
+                "order": {
+                  ".write": "auth != null && root.child('members').child(auth.uid).val() === true && data.parent().exists()",
+                  ".validate": "newData.val() === 'none' || (newData.isNumber() && newData.val() >= 0 && newData.val() <= 100)"
+                },
+                "locked": {
+                  ".write": "auth != null && root.child('members').child(auth.uid).val() === true && data.parent().exists()",
+                  ".validate": "newData.val() === 'none' || newData.isBoolean()"
+                },
+                "mode": {
+                  ".write": "auth != null && root.child('members').child(auth.uid).val() === true && data.parent().exists()",
+                  ".validate": "newData.val() === 'dimmer' || newData.val() === 'switch'"
+                },
+                "state": {
+                  ".write": "auth != null && root.child('members').child(auth.uid).val() === true && data.parent().exists()",
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+                },
+                "lockstate": {
+                  ".write": "auth != null && root.child('members').child(auth.uid).val() === true && data.parent().exists()",
+                  ".validate": "newData.isBoolean()"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
