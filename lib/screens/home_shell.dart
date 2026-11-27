@@ -8,8 +8,8 @@ import '../core/home_repository.dart';
 import '../core/link_service.dart';
 import '../core/visibility_settings.dart';
 import '../ui/app_logo.dart';
-import '../ui/room_icons.dart';
 import 'configuration_screen.dart';
+import 'floor_view.dart';
 import 'link_start_screen.dart';
 import 'settings_screen.dart';
 import 'unlock_sheet.dart';
@@ -142,17 +142,21 @@ class _HomeShellState extends State<HomeShell> {
           page = _Page.home;
         }
         final title = switch (page) {
-          _Page.home => 'My Home',
+          _Page.home => '',
           _Page.configuration => 'Configuration',
           _Page.profile => 'Profile',
           _Page.display => 'Display',
           _Page.visibility => 'Shown on this phone',
         };
+        final dark = Theme.of(context).brightness == Brightness.dark;
         return Scaffold(
+          backgroundColor: page == _Page.home
+              ? (dark ? const Color(0xFF0B1D26) : const Color(0xFFEEF3F2))
+              : null,
           appBar: AppBar(title: Text(title)),
           drawer: Builder(builder: (_) => _buildDrawer(isOwner, page)),
           body: switch (page) {
-            _Page.home => _HomeView(
+            _Page.home => FloorHomeView(
               repo: _repo,
               isOwner: isOwner,
               onConfigure: () async {
@@ -385,158 +389,6 @@ class _OwnerOnly extends StatelessWidget {
   }
 }
 
-class _HomeView extends StatelessWidget {
-  const _HomeView({
-    required this.repo,
-    required this.isOwner,
-    required this.onConfigure,
-  });
-
-  final HomeRepository repo;
-  final bool isOwner;
-  final VoidCallback onConfigure;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    final vis = VisibilitySettings.instance;
-    return ListenableBuilder(
-      listenable: vis,
-      builder: (context, _) => StreamBuilder<Home?>(
-        stream: repo.watchHome(),
-        builder: (context, snap) {
-          if (snap.hasError) {
-            return _Message(
-              icon: Icons.cloud_off_rounded,
-              title: 'Could not load the home',
-              body: 'Check the internet connection and the database rules.',
-            );
-          }
-          if (!snap.hasData &&
-              snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final full = snap.data;
-          final home = full == null ? null : vis.filter(full);
-          if (home != null && vis.limited && home.roomCount == 0) {
-            return _Message(
-              icon: Icons.visibility_off_outlined,
-              title: 'Nothing to show',
-              body:
-                  'This phone shows only chosen rooms, and none is chosen yet. '
-                  'Choose them in Settings > Shown on this phone.',
-            );
-          }
-          if (home == null) {
-            return _Message(
-              icon: Icons.add_home_outlined,
-              title: 'No home yet',
-              body: isOwner
-                  ? 'Open Configuration in the side menu to create your home, its floors and rooms.'
-                  : 'The owner has not created the home yet.',
-              action: isOwner
-                  ? FilledButton.icon(
-                      onPressed: onConfigure,
-                      icon: const Icon(Icons.tune_rounded),
-                      label: const Text('Open Configuration'),
-                    )
-                  : null,
-            );
-          }
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-            children: [
-              Text(
-                home.name,
-                style: text.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${home.floors.length} floors · ${home.roomCount} rooms',
-                style: text.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 20),
-              if (home.floors.isEmpty)
-                Text(
-                  'No floors yet. Add them in Configuration.',
-                  style: text.bodyMedium,
-                ),
-              for (final f in home.floors) ...[
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10, top: 8),
-                  child: Text(
-                    f.name,
-                    style: text.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                if (f.rooms.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      'No rooms on this floor.',
-                      style: text.bodyMedium?.copyWith(color: scheme.outline),
-                    ),
-                  ),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.35,
-                  children: [
-                    for (final r in f.rooms)
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: scheme.primaryContainer,
-                                child: Icon(
-                                  roomIcon(r.type),
-                                  color: scheme.onPrimaryContainer,
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                r.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: text.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                capitalize(r.type),
-                                style: text.bodySmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
 class _NoAccess extends StatelessWidget {
   const _NoAccess({
     required this.email,
@@ -551,7 +403,7 @@ class _NoAccess extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: _Message(
+        child: HomeMessage(
           icon: Icons.hourglass_top_rounded,
           title: 'Waiting for access',
           body:
@@ -567,57 +419,6 @@ class _NoAccess extends StatelessWidget {
               TextButton(onPressed: onSignOut, child: const Text('Sign out')),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Message extends StatelessWidget {
-  const _Message({
-    required this.icon,
-    required this.title,
-    required this.body,
-    this.action,
-  });
-  final IconData icon;
-  final String title;
-  final String body;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final text = Theme.of(context).textTheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer.withValues(alpha: 0.6),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 40, color: scheme.onPrimaryContainer),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              body,
-              textAlign: TextAlign.center,
-              style: text.bodyLarge?.copyWith(color: scheme.onSurfaceVariant),
-            ),
-            if (action != null) ...[const SizedBox(height: 24), action!],
-          ],
         ),
       ),
     );

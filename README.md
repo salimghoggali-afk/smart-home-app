@@ -27,6 +27,29 @@ in the Realtime Database.
   give the new master key to the code page. Old app versions keep the old key.
 - Code: `lib/core/admin_lock.dart`, tests: `test/admin_lock_test.dart`.
 
+## Home data (v1.6, lights)
+
+Everything is a list, so the board finds things by number. Items are never
+deleted: "Remove" in the app sets `archived: true`, so numbers never move.
+
+```
+homes/{h}: name, createdAt, createdBy, archived?
+  floors/{f}: name, archived?
+    lamps/{l}: name, order, state, locked, lockstate, mode, archived?
+    rooms/{r}: name, type, archived?
+      lamps/{i}: position        (1-based number of a lamp in floors/{f}/lamps)
+      rooms/{s}: name, type, lamps/{i}/position   (one level of sub-rooms)
+```
+
+Lamp fields:
+- `order` (app): `"none"`, then a number 0 to 100.
+- `state` (board): 0 to 100, shown in the app as the light level.
+- `locked` (app): `"none"`, then `true` (board ignores the wall switch) or `false`.
+- `lockstate` (board): `true` or `false`, the lock the board applied.
+- `mode` (app): `"switch"` (On / Off) or `"dimmer"`.
+
+Shutters (`volets`) are not in the app yet.
+
 ## Database rules
 
 Paste `database.rules.json` into Firebase console > Realtime Database > Rules.

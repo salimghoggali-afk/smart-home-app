@@ -6,7 +6,7 @@ class DisplaySettings extends ChangeNotifier {
   DisplaySettings._();
   static final instance = DisplaySettings._();
 
-  ThemeMode _mode = ThemeMode.system;
+  ThemeMode _mode = ThemeMode.light;
   double _textScale = 1.0;
 
   ThemeMode get mode => _mode;
@@ -23,7 +23,7 @@ class DisplaySettings extends ChangeNotifier {
       final p = await SharedPreferences.getInstance();
       _mode = ThemeMode.values.firstWhere(
           (m) => m.name == p.getString('themeMode'),
-          orElse: () => ThemeMode.system);
+          orElse: () => ThemeMode.light);
       _textScale = p.getDouble('textScale') ?? 1.0;
       notifyListeners();
     } catch (_) {}
