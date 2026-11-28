@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -14,12 +16,14 @@ import 'link_start_screen.dart';
 import 'settings_screen.dart';
 import 'unlock_sheet.dart';
 
-enum _Page { home, configuration, profile, display, visibility }
+enum _Page { home, configuration, profile, display, visibility, wifi }
 
 /// The signed-in app. Side menu:
 ///   Home
 ///   Operator (daily operator code): Configuration, Unlink the home
-///   Settings (user's own password): Profile, Display
+///   Home, with the list of homes when there are several
+///   Settings: Profile, Display, Shown on this phone, Board Wi-Fi
+///   (all but Display need the user's own password)
 ///   Sign out
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -44,11 +48,29 @@ class _HomeShellState extends State<HomeShell> {
   final _lock = AdminLock();
   late Future<AccessLevel> _access = widget.auth.accessLevel();
   _Page _page = _Page.home;
+  StreamSubscription<List<Home>>? _homesSub;
+  List<Home> _homes = const [];
 
   @override
   void initState() {
     super.initState();
     VisibilitySettings.instance.load(widget.config.projectId);
+    // The homes of the project, for the home list in the menu.
+    _homesSub = _repo.watchHomes().listen((h) {
+      if (mounted) setState(() => _homes = h);
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _homesSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openHome(int index) async {
+    Navigator.of(context).pop(); // close the drawer
+    await VisibilitySettings.instance.selectHome(index);
+    if (mounted) setState(() => _page = _Page.home);
   }
 
   Future<bool> _operator() => askOperatorCode(context, _lock);
@@ -60,7 +82,7 @@ class _HomeShellState extends State<HomeShell> {
     final ok = switch (p) {
       _Page.home => true,
       _Page.configuration => await _operator(),
-      _Page.profile || _Page.visibility => await _settings(),
+      _Page.profile || _Page.visibility || _Page.wifi => await _settings(),
       _Page.display => true, // Display stays open without a password.
     };
     if (ok && mounted) setState(() => _page = p);
@@ -137,7 +159,9 @@ class _HomeShellState extends State<HomeShell> {
         if (page == _Page.configuration && !_lock.operatorUnlocked) {
           page = _Page.home;
         }
-        if ((page == _Page.profile || page == _Page.visibility) &&
+        if ((page == _Page.profile ||
+                page == _Page.visibility ||
+                page == _Page.wifi) &&
             !_lock.settingsUnlocked) {
           page = _Page.home;
         }
@@ -147,11 +171,12 @@ class _HomeShellState extends State<HomeShell> {
           _Page.profile => 'Profile',
           _Page.display => 'Display',
           _Page.visibility => 'Shown on this phone',
+          _Page.wifi => 'Board Wi-Fi',
         };
         final dark = Theme.of(context).brightness == Brightness.dark;
         return Scaffold(
           backgroundColor: page == _Page.home
-              ? (dark ? const Color(0xFF0B1D26) : const Color(0xFFEEF3F2))
+              ? (dark ? const Color(0xFF0B1D26) : const Color(0xFFDCE5E3))
               : null,
           appBar: AppBar(title: Text(title)),
           drawer: Builder(builder: (_) => _buildDrawer(isOwner, page)),
@@ -177,6 +202,7 @@ class _HomeShellState extends State<HomeShell> {
             ),
             _Page.display => const DisplayScreen(),
             _Page.visibility => VisibilityScreen(repo: _repo),
+            _Page.wifi => const BoardWifiScreen(),
           },
         );
       },
@@ -184,6 +210,9 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   Widget _buildDrawer(bool isOwner, _Page page) {
+    final vis = VisibilitySettings.instance;
+    final shown = vis.visible(_homes);
+    final current = vis.pick(_homes);
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final shape = RoundedRectangleBorder(
@@ -302,6 +331,18 @@ class _HomeShellState extends State<HomeShell> {
               selected: page == _Page.home,
               onTap: () => _open(_Page.home),
             ),
+            // Several homes in the project: open one from here.
+            if (shown.length > 1)
+              for (final h in shown)
+                item(
+                  icon: h.index == current?.index
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_off_rounded,
+                  label: h.name,
+                  selected: page == _Page.home && h.index == current?.index,
+                  indent: 16,
+                  onTap: () => _openHome(h.index),
+                ),
             group(
               icon: Icons.engineering_outlined,
               label: 'Operator',
@@ -330,7 +371,8 @@ class _HomeShellState extends State<HomeShell> {
               expanded:
                   page == _Page.profile ||
                   page == _Page.display ||
-                  page == _Page.visibility,
+                  page == _Page.visibility ||
+                  page == _Page.wifi,
               children: [
                 item(
                   icon: Icons.person_outline_rounded,
@@ -352,6 +394,13 @@ class _HomeShellState extends State<HomeShell> {
                   selected: page == _Page.visibility,
                   indent: 16,
                   onTap: () => _open(_Page.visibility),
+                ),
+                item(
+                  icon: Icons.wifi_rounded,
+                  label: 'Board Wi-Fi',
+                  selected: page == _Page.wifi,
+                  indent: 16,
+                  onTap: () => _open(_Page.wifi),
                 ),
               ],
             ),

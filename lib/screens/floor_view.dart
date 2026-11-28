@@ -37,24 +37,24 @@ class FloorPalette {
   static const light = FloorPalette._(
     dark: false,
     ink: Color(0xFF10262B),
-    muted: Color(0xFF506A70),
-    line: Color(0x1A10262B),
-    segBg: Color(0xFFE3EBE9),
+    muted: Color(0xFF465F66),
+    line: Color(0x2410262B),
+    segBg: Color(0xFFD2DDDA),
     pill: Color(0xFFFFFFFF),
     sheet: Color(0xFFFFFFFF),
     scrim: Color(0x2E10262B),
-    tileOn: Color(0xFFFFFAF0),
-    tileOff: Color(0xFFF4F8F7),
-    off: Color(0xFFE6EEEC),
+    tileOn: Color(0xFFFFF6E3),
+    tileOff: Color(0xFFE8EEED),
+    off: Color(0xFFD6E0DE),
     offIcon: Color(0xFF5F777C),
     accent: Color(0xFF0B8F80),
     tints: {
-      'hall': Color(0xFFE9EEF1),
-      'living': Color(0xFFE0EEF2),
-      'kitchen': Color(0xFFF1EEDC),
-      'bathroom': Color(0xFFDDF0F3),
-      'stairs': Color(0xFFECE6F5),
-      'bedroom': Color(0xFFE7E6F7),
+      'hall': Color(0xFFDCE3E7),
+      'living': Color(0xFFD2E3E8),
+      'kitchen': Color(0xFFE8E3CB),
+      'bathroom': Color(0xFFCFE6EA),
+      'stairs': Color(0xFFE0D9EC),
+      'bedroom': Color(0xFFDBD9EF),
     },
   );
 
@@ -183,6 +183,15 @@ class _FloorHomeViewState extends State<FloorHomeView> {
         final all = _homes.value;
         if (all == null) return const Center(child: CircularProgressIndicator());
         final home = _current();
+        final shown = _vis.visible(all);
+        if (home == null && all.isNotEmpty) {
+          return const HomeMessage(
+            icon: Icons.visibility_off_outlined,
+            title: 'No home shown',
+            body: 'Every home is hidden on this phone. '
+                'Show one in Settings > Shown on this phone.',
+          );
+        }
         if (home == null) {
           return HomeMessage(
             icon: Icons.add_home_outlined,
@@ -210,10 +219,10 @@ class _FloorHomeViewState extends State<FloorHomeView> {
         final fi = home.floors.isEmpty ? 0 : _floor.clamp(0, home.floors.length - 1);
         return _FloorPage(
           home: home,
-          homeCount: all.length,
+          homeCount: shown.length,
           floorIndex: fi,
           onFloor: (i) => setState(() => _floor = i),
-          onPickHome: () => _pickHome(all),
+          onPickHome: () => _pickHome(shown),
           onOpen: (floor, room) => _openRoom(home.index, floor.index, room.id),
           repo: widget.repo,
         );
