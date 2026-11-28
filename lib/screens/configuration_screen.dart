@@ -35,7 +35,7 @@ class ConfigurationScreen extends StatelessWidget {
           }
           final homes = snap.data;
           if (homes == null) return const Center(child: CircularProgressIndicator());
-          final home = vis.pick(homes);
+          final home = vis.pickAny(homes);
           return home == null
               ? _CreateHome(repo: repo, uid: uid)
               : _EditHome(repo: repo, uid: uid, home: home, homes: homes);

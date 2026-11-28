@@ -10,10 +10,23 @@ class AppColors {
 }
 
 ThemeData buildTheme(Brightness brightness) {
-  final scheme = ColorScheme.fromSeed(
+  var scheme = ColorScheme.fromSeed(
     seedColor: AppColors.seed,
     brightness: brightness,
   );
+  if (brightness == Brightness.light) {
+    // v1.7: a little darker than the default Material light tones, still light.
+    scheme = scheme.copyWith(
+      surface: const Color(0xFFE4EBE9),
+      surfaceContainerLowest: const Color(0xFFF4F7F6),
+      surfaceContainerLow: const Color(0xFFEDF2F1),
+      surfaceContainer: const Color(0xFFE2E9E7),
+      surfaceContainerHigh: const Color(0xFFD9E2E0),
+      surfaceContainerHighest: const Color(0xFFD0DAD8),
+      surfaceDim: const Color(0xFFCCD6D4),
+      surfaceBright: const Color(0xFFF1F5F4),
+    );
+  }
   final base = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,

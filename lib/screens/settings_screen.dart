@@ -10,7 +10,7 @@ import '../core/home_repository.dart';
 import '../core/visibility_settings.dart';
 import '../ui/room_icons.dart';
 
-const appVersion = '1.6.0';
+const appVersion = '1.7.0';
 
 Widget _section(BuildContext context, String t) {
   final scheme = Theme.of(context).colorScheme;
@@ -237,111 +237,197 @@ class DisplayScreen extends StatelessWidget {
   }
 }
 
-/// Settings > Shown on this phone: choose which rooms this phone shows.
-/// Opens only with the signed-in account's password, so whoever uses the
-/// phone cannot undo it.
-class VisibilityScreen extends StatelessWidget {
+/// Settings > Shown on this phone: choose, for each home, whether this phone
+/// shows all of it, only some rooms, or nothing. Opens only with the
+/// signed-in account's password, so whoever uses the phone cannot undo it.
+class VisibilityScreen extends StatefulWidget {
   const VisibilityScreen({super.key, required this.repo});
   final HomeRepository repo;
 
   @override
+  State<VisibilityScreen> createState() => _VisibilityScreenState();
+}
+
+class _VisibilityScreenState extends State<VisibilityScreen> {
+  final v = VisibilitySettings.instance;
+  late int _editing = v.selectedHome;
+  late final Stream<List<Home>> _homes = widget.repo.watchHomes();
+
+  @override
   Widget build(BuildContext context) {
-    final v = VisibilitySettings.instance;
     final scheme = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     return ListenableBuilder(
       listenable: v,
       builder: (context, _) => StreamBuilder<List<Home>>(
-        stream: repo.watchHomes(),
+        stream: _homes,
         builder: (context, snap) {
-          final home = snap.data == null ? null : v.pick(snap.data!);
+          final homes = snap.data ?? const <Home>[];
+          Home? home;
+          for (final h in homes) {
+            if (h.index == _editing) home = h;
+          }
+          home ??= homes.isEmpty ? null : homes.first;
+          final mode = home == null ? HomeShow.all : v.modeOf(home.index);
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
             children: [
               Text(
                 'Choose what this phone shows. Use it, for example, on a child\'s '
-                'phone to show only their room. The choice is saved on this '
-                'phone only, and only your password can change it.',
+                'phone to show only their room, or to hide a home. The choice is '
+                'saved on this phone only, and only your password can change it.',
                 style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
               ),
-              const SizedBox(height: 12),
-              Card(
-                child: RadioGroup<bool>(
-                  groupValue: v.limited,
-                  onChanged: (x) {
-                    if (x != null) v.save(limited: x, rooms: v.shownRooms);
-                  },
-                  child: const Column(children: [
-                    RadioListTile<bool>(
-                      value: false,
-                      title: Text('Show the whole home'),
-                    ),
-                    RadioListTile<bool>(
-                      value: true,
-                      title: Text('Show only the rooms I choose'),
-                      subtitle: Text('Rooms added later stay hidden until you tick them.'),
-                    ),
-                  ]),
-                ),
-              ),
-              if (v.limited) ...[
-                _section(context, 'Rooms shown on this phone'),
-                if (home == null)
-                  snap.connectionState == ConnectionState.waiting
-                      ? const Center(child: CircularProgressIndicator())
-                      : const Text('No home yet. Create it in Operator > Configuration.')
-                else if (home.roomCount == 0)
-                  const Text('No rooms yet. Add them in Operator > Configuration.')
-                else
-                  for (final f in home.floors)
-                    if (f.rooms.isNotEmpty)
-                      Card(
-                        child: Column(children: [
-                          ListTile(
-                            title: Text(f.name,
-                                style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                            trailing: TextButton(
-                              onPressed: () {
-                                final ids = f.rooms.map((r) => r.id).toSet();
-                                final all = ids.every(v.shownRooms.contains);
-                                v.save(
-                                    limited: true,
-                                    rooms: all
-                                        ? v.shownRooms.difference(ids)
-                                        : v.shownRooms.union(ids));
-                              },
-                              child: Text(f.rooms.every((r) => v.shownRooms.contains(r.id))
-                                  ? 'Hide all'
-                                  : 'Show all'),
-                            ),
-                          ),
-                          for (final r in f.rooms)
-                            CheckboxListTile(
-                              secondary: Icon(roomIcon(r.type)),
-                              title: Text(r.name),
-                              subtitle: Text(r.subRooms.isEmpty
-                                  ? capitalize(r.type)
-                                  : '${capitalize(r.type)}, with ${r.subRooms.map((x) => x.name).join(', ')}'),
-                              value: v.shownRooms.contains(r.id),
-                              onChanged: (on) {
-                                final next = {...v.shownRooms};
-                                on == true ? next.add(r.id) : next.remove(r.id);
-                                v.save(limited: true, rooms: next);
-                              },
-                            ),
-                        ]),
+              if (home == null) ...[
+                const SizedBox(height: 24),
+                snap.connectionState == ConnectionState.waiting
+                    ? const Center(child: CircularProgressIndicator())
+                    : const Text('No home yet. Create it in Operator > Configuration.'),
+              ] else ...[
+                if (homes.length > 1) ...[
+                  _section(context, 'Home'),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final h in homes)
+                      ChoiceChip(
+                        avatar: Icon(
+                            v.modeOf(h.index) == HomeShow.hidden
+                                ? Icons.visibility_off_outlined
+                                : Icons.home_outlined,
+                            size: 18),
+                        label: Text(h.name),
+                        selected: h.index == home.index,
+                        onSelected: (_) => setState(() => _editing = h.index),
                       ),
-                const SizedBox(height: 8),
-                Text(
-                  'A room is shown with its sub-rooms and lamps. Choosing single '
-                  'devices inside a room can be added later.',
-                  style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ]),
+                ],
+                const SizedBox(height: 12),
+                Card(
+                  child: RadioGroup<HomeShow>(
+                    groupValue: mode,
+                    onChanged: (x) {
+                      if (x != null) v.setMode(home!.index, x);
+                    },
+                    child: Column(children: [
+                      const RadioListTile<HomeShow>(
+                        value: HomeShow.all,
+                        title: Text('Show the whole home'),
+                      ),
+                      const RadioListTile<HomeShow>(
+                        value: HomeShow.chosen,
+                        title: Text('Show only the rooms I choose'),
+                        subtitle: Text('Rooms added later stay hidden until you tick them.'),
+                      ),
+                      if (homes.length > 1)
+                        const RadioListTile<HomeShow>(
+                          value: HomeShow.hidden,
+                          title: Text('Hide this home on this phone'),
+                          subtitle: Text('It is left out of the home list.'),
+                        ),
+                    ]),
+                  ),
                 ),
+                if (mode == HomeShow.chosen) ...[
+                  _section(context, 'Rooms shown on this phone'),
+                  if (home.roomCount == 0)
+                    const Text('No rooms yet. Add them in Operator > Configuration.')
+                  else
+                    for (final f in home.floors)
+                      if (f.rooms.isNotEmpty)
+                        Card(
+                          child: Column(children: [
+                            ListTile(
+                              title: Text(f.name,
+                                  style: text.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                              trailing: TextButton(
+                                onPressed: () {
+                                  final ids = f.rooms.map((r) => r.id).toSet();
+                                  final all = ids.every(v.shownRooms.contains);
+                                  v.setRooms(all
+                                      ? v.shownRooms.difference(ids)
+                                      : v.shownRooms.union(ids));
+                                },
+                                child: Text(f.rooms.every((r) => v.shownRooms.contains(r.id))
+                                    ? 'Hide all'
+                                    : 'Show all'),
+                              ),
+                            ),
+                            for (final r in f.rooms)
+                              CheckboxListTile(
+                                secondary: Icon(roomIcon(r.type)),
+                                title: Text(r.name),
+                                subtitle: Text(r.subRooms.isEmpty
+                                    ? capitalize(r.type)
+                                    : '${capitalize(r.type)}, with ${r.subRooms.map((x) => x.name).join(', ')}'),
+                                value: v.shownRooms.contains(r.id),
+                                onChanged: (on) {
+                                  final next = {...v.shownRooms};
+                                  on == true ? next.add(r.id) : next.remove(r.id);
+                                  v.setRooms(next);
+                                },
+                              ),
+                          ]),
+                        ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'A room is shown with its sub-rooms and lamps. Choosing single '
+                    'devices inside a room can be added later.',
+                    style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ],
               ],
             ],
           );
         },
       ),
+    );
+  }
+}
+
+/// Settings > Board Wi-Fi: will send the Wi-Fi name and password to the
+/// home's board over Bluetooth. The board protocol is agreed later, when the
+/// board program is written, so this page only explains what is coming.
+class BoardWifiScreen extends StatelessWidget {
+  const BoardWifiScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    Widget step(IconData icon, String body) => ListTile(
+          leading: Icon(icon, color: scheme.primary),
+          title: Text(body, style: text.bodyMedium),
+        );
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(children: [
+              Icon(Icons.bluetooth_searching_rounded, size: 48, color: scheme.primary),
+              const SizedBox(height: 12),
+              Text('Coming soon',
+                  style: text.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(
+                'Here you will change the Wi-Fi network of the home\'s board, '
+                'over Bluetooth, without opening the board.',
+                textAlign: TextAlign.center,
+                style: text.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ]),
+          ),
+        ),
+        _section(context, 'How it will work'),
+        Card(
+          child: Column(children: [
+            step(Icons.touch_app_outlined, 'Put the board in setup mode.'),
+            step(Icons.bluetooth_rounded, 'The phone finds the board nearby over Bluetooth.'),
+            step(Icons.wifi_rounded, 'Choose the Wi-Fi network and type its password.'),
+            step(Icons.check_circle_outline_rounded, 'The board joins the network and the app confirms it.'),
+          ]),
+        ),
+      ],
     );
   }
 }
